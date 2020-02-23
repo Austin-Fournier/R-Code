@@ -1,0 +1,164 @@
+#Delete the "#" in front of the command on line 4 if this is your first time running the script. 
+#After the first time running the script, put a hashtag back in front of line 4 to prevent unnecessary reinstallation.
+
+#install.packages("LearnBayes")
+
+#There are three sections where "settings" may be changed
+#Settings concerning business and statistical assumptions are at the beginning of the script
+#There is also a setting near the very end to select which cluster the results section will report on
+#This is done to allow different groups to be evaluated without rerunning the entire simulation
+
+#Section 1 - Business Parameters
+#These are adjustable settings which can be changed to reflect different business assumptions
+
+
+discount_rate = .09 #this is the annual discount rate used to value revenues from this project
+#for an axample, .09 corresponds to a 9% discount rate
+
+delay = 4 #delay between the beginning of the sales campaign and the first purchase
+
+duration = 52*4 #how many weeks after
+
+installation_cost = 25
+
+profit_margin = 1 #price at which one unit of product is sold minus cost of manufacturing
+
+market_size = 140000 #total number of firms in the market
+
+prob_buy = c(.497037037, .315384615, .553333333, .516363636) 
+#The above gives the probability a member of each cluster has of becoming a customer (if they recieve communications through thier preferred channel)
+#While the true probabilities are unknown, we assumed them to be determined by the level of interest expressed in recieving the product.
+#We specified a rough formula for this - see the written report for details.
+#We also assume that the level of interest expressed by members of each cluster is representative of unseen people who belong to the same cluster.
+
+Admin_costs = c(300000, 514000, 384000, 300000) #fixed costs of advertising to a certain group, and other overhead associate with serving a given market
+
+Seg_size_costs = c(0,0,0,0) #variable costs that only come into play when selling to a certain segment, which depend on the total number of people in the segment. Given in dollars per member of target segment.
+
+Seg_ind_buy_costs = c(.1,0,0,.1) #variable costs that only come when a successful sale is made, depending on the particular segment
+
+min_profitable = 0 #this is the NPV in dollars that must be exceeded for a segment to be considered profitable - by default $0.
+
+min_size_interest = 50000 #this makes it possible to check the probability that a segment will be above a certain size
+#this may make it easier to conduct cost-benefit analysis using a cost structure entirely different from the one this simulation assumes
+
+#Section 2 - Statistical parameters - these are adjustable settings relating to statistics and the simulation itself
+
+cproppriorparam = c(1,1,1,1) #these are the paramaters of a dirchlet distribution that's being used for the prior.
+#setting them all equal to one implies that, prior to collecting the data, there was no reason to think any of these clusters would be larger than the others.
+#Alternatively, if the first first of these numbers was set to 10, it would mean there was reason to believe cluster one would be larger than the others before collecting the data.
+
+srounds = 100000 #this is the number of times this simulation will be repeated.
+#Higher numbers increase the results of the simulation accurately reflecting what is expected to happen (subject to the assumptions of this simulation, as detailed in the report)
+
+
+
+#Section 3 - Data input
+cpropcount = c(54,26,6,44) # this is the observed count of how data points belonged to each cluster in our data set
+#new values can be addep 
+
+#cpropcount, cproppriorparam, prob_buy, Admin_costs, Seg_size_costs, and Seg_ind_buy_costs 
+#are all supposed to have one entry for each cluster.
+#make sure to adjust all of them if changing this simulation to work with a different number of clusters.
+
+
+
+#Section 4 - Simulation
+
+alpha = cproppriorparam + cpropcount
+discount_divisor = 1 + discount_rate
+discount_divisor_weekly = discount_divisor^(1/52)
+
+payment_vector = (profit_margin - installation_cost - Seg_ind_buy_costs[1])/((discount_divisor_weekly)^delay)
+for ( i in 1:(duration-1))
+{					       # loop begins at this bracket and keeps looping til done			
+  temp = (profit_margin - Seg_ind_buy_costs[1])/((discount_divisor_weekly)^(delay + i))
+  payment_vector = append(payment_vector,temp)
+} 
+
+NPV_indiv = sum(payment_vector)
+NPV_vec = NPV_indiv
+for ( j in 2:(length(alpha)))
+{
+payment_vector = (profit_margin - installation_cost - Seg_ind_buy_costs[j])/((discount_divisor_weekly)^delay)
+  for ( i in 1:(duration-1))
+  {					       # loop begins at this bracket and keeps looping til done			
+    temp = (profit_margin - Seg_ind_buy_costs[j])/((discount_divisor_weekly)^(delay + i))
+    payment_vector = append(payment_vector,temp)
+  } 
+NPV_indiv = sum(payment_vector)
+NPV_vec = append(NPV_vec,NPV_indiv)
+}
+
+library(LearnBayes)
+results = rdirichlet(srounds, alpha)
+results = data.frame(results)
+names(results) = c("ClusterProp1", "ClusterProp2", "ClusterProp3", "ClusterProp4")
+head(results)
+
+
+ClusterNumNames = "ClusterNum1"
+ClusterGrossNames = "ClusterGross1"
+ClusterProfitNames = "ClusterProfit1"
+ClusterProfitBinNames = "ClusterProfitBin1"
+ClusterNumBinNames = "ClusterNumBin1"
+
+
+
+for ( i in 2:(length(alpha)))
+{					       # loop begins at this bracket and keeps looping til done			
+  ClusterNumTemp = paste("ClusterNum", toString(i), sep = "")
+  ClusterNumNames = append(ClusterNumNames, ClusterNumTemp)
+  ClusterGrossTemp = paste("ClusterGross", toString(i), sep = "")
+  ClusterGrossNames = append(ClusterGrossNames, ClusterGrossTemp)
+  ClusterProfitTemp = paste("ClusterProfit", toString(i), sep = "")
+  ClusterProfitNames = append(ClusterProfitNames, ClusterProfitTemp)
+  ClusterProfitBinTemp = paste("ClusterProfitBin", toString(i), sep = "")
+  ClusterProfitBinNames = append(ClusterProfitBinNames, ClusterProfitBinTemp)
+  ClusterNumBinTemp = paste("ClusterNumBin", toString(i), sep = "")
+  ClusterNumBinNames = append(ClusterNumBinNames, ClusterNumBinTemp)
+} 
+
+for ( i in 1:(length(alpha)))
+{					       # loop begins at this bracket and keeps looping til done			
+  ClusterNumTempA = results[,i] * market_size
+  ClusterCustTempA = ClusterNumTempA * prob_buy[i]
+  ClusterGrossTempA = ClusterCustTempA * NPV_vec[i]
+  ClusterProfitTempA = ClusterGrossTempA - Admin_costs[i] - (Seg_size_costs[i] * ClusterNumTempA) - (Seg_ind_buy_costs[i] * ClusterCustTempA)
+  ClusterProfitBinA = ifelse((ClusterProfitTempA > min_profitable), 1, 0)
+  ClusterNumBinA = ifelse((ClusterNumTempA > min_size_interest), 1, 0)
+  Tempframe = cbind(ClusterNumTempA, ClusterGrossTempA, ClusterProfitTempA, ClusterProfitBinA, ClusterNumBinA)
+  Tempframe = data.frame(Tempframe)
+  names(Tempframe) =c(ClusterNumNames[i],ClusterGrossNames[i], ClusterProfitNames[i],ClusterProfitBinNames[i], ClusterNumBinNames[i])
+  results = cbind(results, Tempframe)
+} 
+
+#Section 5 - Cluster Selection for Results
+#To browse the results for different clusters, replace the cluster number, then highlight sections 5 and 6 only and run the script
+
+SummarizeforCluster = 3
+
+
+
+#Section 6 - Results
+
+mean(results[,(5+5*(SummarizeforCluster-1))])
+#Expected size of group
+
+mean(results[,(7+5*(SummarizeforCluster-1))])
+#Expected value of profit
+
+sd(results[,(7+5*(SummarizeforCluster-1))])
+#Variance of profit (a measure of risk)
+
+mean(results[,(8+5*(SummarizeforCluster-1))])
+#Chance selected group will be large enough to meet profitability requirements
+
+mean(results[,(9+5*(SummarizeforCluster-1))])
+#Chance selected group will be larger than the particular size selected in the Business Parameters section - 5000 firms by default
+
+hist(results[,(5+5*(SummarizeforCluster-1))])
+#Histogram of possible group sizes
+
+
+#To browse the results for different clusters, replace the cluster number in section 5, then highlight sections 5 and 6 only and run the script
